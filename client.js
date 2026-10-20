@@ -37,6 +37,17 @@ window.__ModuleLoader__.load({
     } catch {
       primitives = {}
     }
+    // A `position: fixed` overlay is still clipped when an ancestor creates a
+    // containing block (`transform` / `filter` / `contain`) — the right sidebar
+    // does. A portal into document.body keeps the lightbox on the real viewport,
+    // full-window, like the viewer the conversation uses for its own images.
+    let portalFactory = null
+    try {
+      const reactDom = require('react-dom')
+      if (typeof reactDom?.createPortal === 'function') portalFactory = reactDom.createPortal
+    } catch {
+      portalFactory = null
+    }
     const pickIcon = (...names) => names.map((n) => primitives[n]).find((v) => typeof v === 'function')
     const IconClose = pickIcon('IconCloseOutline16', 'IconCloseOutlineRegular', 'IconCloseOutlineMedium')
     const IconTrash = pickIcon('IconTrashOutline16', 'IconTrashOutlineRegular', 'IconTrashOutlineMedium')
@@ -667,31 +678,44 @@ window.__ModuleLoader__.load({
       React.useEffect(() => {
         const onKey = (event) => { if (event.key === 'Escape') onClose() }
         window.addEventListener('keydown', onKey)
-        return () => window.removeEventListener('keydown', onKey)
+        // While the viewer is open the page behind it must not scroll, otherwise
+        // a trackpad gesture scrolls the studio panel under the overlay.
+        const previousOverflow = document.body.style.overflow
+        document.body.style.overflow = 'hidden'
+        return () => {
+          window.removeEventListener('keydown', onKey)
+          document.body.style.overflow = previousOverflow
+        }
       }, [onClose])
-      return React.createElement('div', {
-        role: 'dialog', 'aria-label': t('tvDialog'),
+
+      const overlay = React.createElement('div', {
+        role: 'dialog', 'aria-modal': 'true', 'aria-label': t('tvDialog'), className: 'dsh-igl-lightbox',
         style: {
-          position: 'fixed', inset: 0, zIndex: 10000, display: 'grid', placeItems: 'center',
-          background: 'rgba(0,0,0,.72)', padding: 24,
+          position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 2147483000,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          background: 'rgba(0,0,0,.82)', padding: 24,
         },
         onClick: onClose,
       },
         React.createElement('img', {
           src, alt: t('tvImage'),
-          style: { maxWidth: '92vw', maxHeight: '92vh', objectFit: 'contain', borderRadius: 4 },
+          style: { maxWidth: '96vw', maxHeight: '92vh', width: 'auto', height: 'auto', objectFit: 'contain', borderRadius: 4, boxShadow: '0 18px 60px rgba(0,0,0,.55)' },
           onClick: (event) => event.stopPropagation(),
         }),
         React.createElement('button', {
           type: 'button', 'aria-label': t('tvClose'),
           style: {
-            position: 'absolute', top: 12, right: 12, width: 32, height: 32, border: 'none',
-            borderRadius: '50%', cursor: 'pointer', background: 'rgba(255,255,255,.16)', color: '#fff',
+            position: 'fixed', top: 16, right: 16, width: 36, height: 36, border: 'none',
+            borderRadius: '50%', cursor: 'pointer', background: 'rgba(255,255,255,.18)', color: '#fff',
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           },
           onClick: onClose,
         }, IconClose ? React.createElement(IconClose, { size: 16 }) : t('tvClose')),
       )
+
+      // No portal runtime (older bundle): still better than a clipped overlay.
+      if (!portalFactory || typeof document === 'undefined') return overlay
+      return portalFactory(overlay, document.body)
     }
 
     // ---------------------------------------------------------------- toolview

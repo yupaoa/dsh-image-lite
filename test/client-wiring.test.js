@@ -490,3 +490,26 @@ test('the sidebar studio can be switched off from the settings card', () => {
   assert.match(clientSource, /sidebarStudio: 'Use the image studio from the sidebar'/)
   assert.match(clientSource, /重新开启后刷新窗口即可恢复标签与按钮/)
 })
+
+test('the image lightbox is a full-window viewer, not a pane-local overlay', () => {
+  // A `position: fixed` overlay is still clipped by an ancestor that creates a
+  // containing block (transform / filter / contain) — the right sidebar does.
+  // The lightbox therefore has to be portalled into document.body.
+  assert.match(clientSource, /let portalFactory = null/)
+  assert.match(clientSource, /require\(['"]react-dom['"]\)/)
+  assert.match(clientSource, /portalFactory = reactDom\.createPortal/)
+  assert.match(clientSource, /return portalFactory\(overlay, document\.body\)/)
+
+  // Geometry: pinned to all four viewport edges, above every DSH layer.
+  assert.match(clientSource, /className: 'dsh-igl-lightbox'/)
+  assert.match(clientSource, /position: 'fixed', top: 0, left: 0, right: 0, bottom: 0/)
+  assert.match(clientSource, /zIndex: 2147483000/)
+  assert.match(clientSource, /maxWidth: '96vw', maxHeight: '92vh'/)
+
+  // While it is open the page behind it must not scroll, and closing restores it.
+  assert.match(clientSource, /document\.body\.style\.overflow = 'hidden'/)
+  assert.match(clientSource, /document\.body\.style\.overflow = previousOverflow/)
+
+  // The fallback (no react-dom in the module registry) must still render.
+  assert.match(clientSource, /if \(!portalFactory \|\| typeof document === 'undefined'\) return overlay/)
+})
