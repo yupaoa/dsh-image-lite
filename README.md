@@ -117,6 +117,8 @@ node test/client-wiring.test.js  # client 接线 + 模型库纯函数
 
 ## English
 
+[中文](#dsh-image-lite) | **English**
+
 `dsh-image-lite` is an image-generation plugin for [DeepSeek Harness](https://github.com/deepseek-ai) (DSH) with **two ways to generate**:
 
 - **Chat mode** — just tell the chat model "draw me …". The model calls the
