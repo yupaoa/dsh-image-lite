@@ -1,5 +1,7 @@
 # dsh-image-lite
 
+**中文** | [English](#english)
+
 DSH 生图插件支持**双模式生图**：
 
 - **对话模式**：直接和对话模型说"画一张…"，模型调用 `image_generate_lite` 工具
@@ -105,8 +107,145 @@ dsh plugin --profile desktop add link:D:\path\to\dsh-image-lite
 ## 开发
 
 ```bash
-node test/wire.test.js        # 纯函数单测（比例映射/回退、wire 体、refs 校验）
+node test/wire.test.js           # 纯函数单测（比例映射/回退、wire 体、refs 校验）
 node test/client-wiring.test.js  # client 接线 + 模型库纯函数
 ```
 
-包结构、接口约定与风险清单见仓库根 `PLAN.md`；实施记录见 `.superpowers/progress.md`。
+测试不需要任何外部服务或密钥；`index.js` / `client.js` / `wire.js` 三个入口的分工见源码顶部注释。
+
+---
+
+## English
+
+`dsh-image-lite` is an image-generation plugin for [DeepSeek Harness](https://github.com/deepseek-ai) (DSH) with **two ways to generate**:
+
+- **Chat mode** — just tell the chat model "draw me …". The model calls the
+  `image_generate_lite` tool for you; say "change this one" / "use the previous image"
+  and it passes reference images automatically, so you can iterate in a chain.
+- **Studio mode** — do the work by hand in the **Image Studio** tab of the right
+  sidebar: pick references, switch model and aspect ratio, write the prompt, then keep
+  iterating on the gallery. It never consumes a chat turn.
+
+Both modes share one model library and one set of defaults (plugin entry
+`image-gen-lite`, volatile / hot-reloaded). The plugin is self-contained with no
+runtime dependencies, and API keys are resolved through DSH's credential service.
+
+> Requires DSH ≥ 0.1.6 (`configForms`), tested on 0.2.1-rc.2.
+
+### The two modes
+
+**1. Chat mode — let the model generate**
+
+Say "draw a picture", "make an image", "a 16:9 shot of …" in any conversation; the
+model calls `image_generate_lite`:
+
+- no references → text-to-image;
+- "change this one" / "reference the previous image" → image-to-image via `referenceImages`;
+- each result carries a refs JSON line, so the next turn can continue from it.
+
+**2. Studio mode — the sidebar Image Studio**
+
+Open the right-hand tab from the 「生图」 button in the session header (or the guide card):
+
+- references: reuse the latest result in this session, upload, or paste (through
+  attachment admission);
+- switch model and aspect ratio — **live**, written to the same entry and hot-reloaded;
+- prompt → generate → gallery + lightbox → pick a result and keep editing;
+- the red **Clear** button at the top-right resets references, prompt and results at once.
+
+**Shared settings — Plugins page → dsh-image-lite → plugin config**
+(the `plugins.bundle.config` card)
+
+- **Model library**: add / edit / remove providers and models (name, baseUrl, API
+  format, key env var, model list — one `id` or `id  display name` per line).
+- **Quick config**: default model + default aspect stop (7 ratios + auto), used by the
+  next `image_generate_lite` call.
+- **Image folder**: empty means `<session workspace>/generate/image`; an absolute path
+  is also accepted, and the "Open folder…" button opens the native directory picker.
+- **Sidebar · use the studio in the sidebar** (switch, on by default): turning it off
+  hides the 生图工作 tab, its guide card and the header button immediately
+  (`image_generate_lite` keeps working); turning it back on restores them after a
+  window refresh.
+
+**Where these settings live**
+
+| What | Where |
+| --- | --- |
+| Model library, default model, default aspect, image folder, sidebar switch | The plugin entry `image-gen-lite` in the DSH profile config (observed on this machine as the `image-gen-lite` section of `~/.dsh/profiles/<profile>/cordis.patch.yml`; volatile, hot-reloaded) |
+| API keys | DSH credential service, indexed by env-var name (observed as `~/.dsh/.credentials.yaml`, managed by DSH); the plugin config only keeps the env-var name and a mask such as `IMAGE_GEN_AGNES_API_KEY` / `sk-m****0RPD` |
+| Generated images | `<session workspace>/generate/image/`, or the folder you set under Image folder |
+
+In other words: **move the profile config and the credential store to another machine
+and the model library and keys come along** — neither lives in the plugin directory,
+and uninstalling the plugin will not delete them.
+
+### How it works
+
+![How it works](docs/how-it-works.svg)
+
+Both entry points share one pipeline; the plugin itself only does four things:
+**read settings → resolve the key → send one request → save the image**.
+
+1. **Entry**: chat mode calls the tool `image_generate_lite`; studio mode calls the same
+   logic over a local RPC (mounted under `/image-gen-lite/*` on DSH's existing web
+   server, protected by DSH's own session token).
+2. **Read settings**: `baseUrl`, `apiFormat`, default model, aspect stop, output folder
+   and the sidebar switch come from the plugin entry `image-gen-lite`, stored in the
+   profile config — changes apply to the next call (volatile).
+3. **Resolve the key**: the config only holds the env-var name (e.g.
+   `IMAGE_GEN_AGNES_API_KEY`) and a mask; the real secret is resolved by name from the
+   DSH credential service. The plugin never writes plaintext keys or logs them.
+4. **Send**: one HTTPS request to `{baseUrl}/images/generations` following the
+   openai-images convention; for image-to-image the reference is inlined as an `image`
+   data URL in that same request.
+5. **Fetch and save**: decode `b64_json` from the response, or download the returned
+   `url` once; then `mkdir -p` the output folder, write the file and register it as a
+   session attachment — which is why "use this one" works on the next turn.
+
+### Permissions and file boundaries
+
+| Aspect | Actual behaviour |
+| --- | --- |
+| **Reads** | (1) the config of the plugin entry `image-gen-lite`; (2) reference-image attachments you explicitly pass in a session (`attachments.readImage`); (3) already generated image files — **path allow-list**: only `<session workspace>/generate/image` and the folder set under Image folder; anything else fails with `path is not a generated image file` |
+| **Writes** | (1) images: `mkdir -p` the output folder, then write `lite-image-<timestamp>-<random>.png` (extension from the actual MIME type); (2) config: through DSH's config form into the plugin entry in the profile config; (3) API keys: through DSH's credential service — the plugin config keeps only a mask such as `sk-m****0RPD` |
+| **Network** | Exactly two destinations: the provider `baseUrl` you configured (e.g. `https://api.agnes-ai.cn/v1`), and the URL the provider returns for the result image (usually the same host). No telemetry, no third-party reporting, no other hosts, no listening ports |
+| **Never** | No shell commands, no walking or uploading other workspace files, no patching DSH itself, no extra dependencies (the `package.json` has no runtime dependencies beyond DSH's own packages), no background daemons |
+
+In one line: **it reads only the images you hand it, writes only the folder you choose,
+and talks only to the domain you configured.**
+
+> Uninstalling the plugin does not delete generated images or keys already stored in the
+> credential service. To clean up completely, remove the `image-gen-lite` section from
+> the profile config, the matching env-var entry from the credential store, and your
+> output folder.
+
+### Install
+
+```powershell
+# Install the local package from the DSH desktop CLI or the Plugins page (link:):
+dsh plugin --profile desktop add link:D:\path\to\dsh-image-lite
+```
+
+After restarting DSH (or once HMR regroups the bundle):
+
+1. Plugins page → dsh-image-lite: add a provider/model, paste the key, pick the default
+   model and aspect stop;
+2. **Chat mode**: say "draw me …" in a conversation — `image_generate_lite` is called
+   automatically;
+3. **Studio mode**: the 「生图」 button appears in the session header; clicking it opens
+   the 生图工作 tab in the right sidebar (the sidebar switch on the same card can hide
+   both).
+
+Paste the key directly into the provider card on the Plugins page: it goes into DSH's
+credential service and the config only keeps the env-var name and a mask such as
+`IMAGE_GEN_AGNES_API_KEY` / `sk-0****7890`.
+
+### Development
+
+```bash
+node test/wire.test.js           # pure helpers (aspect fallback, wire bodies, ref validation)
+node test/client-wiring.test.js  # client wiring + model-library helpers
+```
+
+The tests need no network, keys or external services. The roles of `index.js`,
+`client.js` and `wire.js` are documented at the top of each file.
