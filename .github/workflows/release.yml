@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write # OIDC token: npm trusted publishing + provenance attestation
+
+jobs:
+  npm-publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # `registry-url` is deliberately NOT set: it makes setup-node write an
+      # .npmrc with `//registry.npmjs.org/:_authToken=${NODE_AUTH_TOKEN}`, which is
+      # the token plumbing this workflow avoids. `publishConfig.registry` in
+      # package.json already pins the registry.
+      - uses: actions/setup-node@v5
+        with:
+          node-version: '24'
+
+      - name: Unit tests
+        run: node --test test/*.test.js
+
+      - name: Tag must match package.json version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          version="$(node -p "require('./package.json').version")"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag ${GITHUB_REF_NAME} does not match package.json version ${version}"
+            exit 1
+          fi
+
+      # Authentication is OIDC trusted publishing: npm exchanges the GitHub OIDC
+      # token for a short-lived publish credential, so there is no NPM_TOKEN secret
+      # to provision, rotate, leak, or accidentally leave empty. Configure it once
+      # on npmjs.com: package Settings → Trusted publishing → GitHub Actions,
+      # repository `yupaoa/dsh-image-lite`, workflow `release.yml`.
+      - name: Publish
+        if: startsWith(github.ref, 'refs/tags/')
+        run: npm publish --provenance --access public

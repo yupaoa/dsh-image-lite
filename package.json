@@ -29,8 +29,22 @@
     "cordis.patch.yml",
     "README.md",
     "docs/how-it-works.svg",
+    "docs/how-it-works.en.svg",
     "LICENSE"
   ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yupaoa/dsh-image-lite.git"
+  },
+  "homepage": "https://github.com/yupaoa/dsh-image-lite#readme",
+  "bugs": {
+    "url": "https://github.com/yupaoa/dsh-image-lite/issues"
+  },
+  "author": "yupaoa",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
