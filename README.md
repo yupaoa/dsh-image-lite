@@ -181,7 +181,7 @@ and uninstalling the plugin will not delete them.
 
 ### How it works
 
-![How it works](docs/how-it-works.svg)
+![How it works](docs/how-it-works.en.svg)
 
 Both entry points share one pipeline; the plugin itself only does four things:
 **read settings → resolve the key → send one request → save the image**.
