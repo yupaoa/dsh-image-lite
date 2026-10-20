@@ -203,6 +203,19 @@ function unquote(value) {
 }
 
 /**
+ * Absolute on any platform: `path.isAbsolute` only knows the host's own syntax, so
+ * a Windows drive (`E:/pics`, `E:\pics`) or UNC (`\\host\share`) path has to be
+ * recognised explicitly — otherwise a config written on Windows is treated as
+ * relative when read anywhere else (and vice versa), and CI on Linux disagrees
+ * with the desktop build.
+ */
+export function isAbsoluteAnywhere(value) {
+  const text = String(value ?? '')
+  if (isAbsolute(text)) return true
+  return /^[A-Za-z]:[\\/]/.test(text) || /^\\\\/.test(text)
+}
+
+/**
  * Where a session's images go: the configured directory when it is set,
  * otherwise `<cwd>/generate/image`. A relative setting resolves against the
  * session workspace, an absolute one is used as-is; an empty setting always
@@ -215,7 +228,7 @@ export function resolveOutputDir(cwd, configured) {
   const expanded = raw.startsWith('~/') || raw.startsWith('~\\')
     ? join(process.env.USERPROFILE ?? process.env.HOME ?? root, raw.slice(2))
     : raw
-  return normalize(isAbsolute(expanded) ? expanded : join(root, expanded))
+  return normalize(isAbsoluteAnywhere(expanded) ? expanded : join(root, expanded))
 }
 
 /**

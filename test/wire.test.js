@@ -25,6 +25,7 @@ import {
   isImageInDir,
   pathForResult,
   resolveOutputDir,
+  isAbsoluteAnywhere,
   isValidImageRef,
   normalizeRefs,
   imageLiteText,
@@ -197,6 +198,15 @@ test('HttpStatusError + errorDetail', () => {
   assert.equal(errorDetail({ error: { message: 'bad size' } }, 400), 'bad size')
   assert.equal(errorDetail({ message: 'nope' }, 404), 'nope')
   assert.equal(errorDetail({}, 500), 'image API error (HTTP 500)')
+})
+
+test('isAbsoluteAnywhere: drive letters and UNC paths count on every platform', () => {
+  assert.equal(isAbsoluteAnywhere('E:/pics'), true)
+  assert.equal(isAbsoluteAnywhere('E:\\pics'), true)
+  assert.equal(isAbsoluteAnywhere('\\\\host\\share'), true)
+  assert.equal(isAbsoluteAnywhere('/home/user/pics'), true)
+  assert.equal(isAbsoluteAnywhere('pics'), false)
+  assert.equal(isAbsoluteAnywhere(''), false)
 })
 
 test('resolveOutputDir: empty falls back to the workspace generate/image', () => {
