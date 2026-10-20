@@ -1,0 +1,9 @@
+# Bundle self-activation patch: when this package is installed into a profile
+# via `dsh plugin --profile <name> add dsh-image-lite`, this patch mounts the
+# host entry `image-gen-lite` (its Config schema comes from index.js).
+# The client half (生图工作台 sidebar tab, corner entry, and the
+# image_generate_lite toolview) is discovered from the `dsh.client`
+# declaration in package.json.
+- insert:
+    - id: image-gen-lite
+      name: dsh-image-lite

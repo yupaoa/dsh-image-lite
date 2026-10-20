@@ -1,0 +1,61 @@
+{
+  "name": "dsh-image-lite",
+  "version": "0.1.0",
+  "description": "DSH 生图插件支持双模式生图：直接对话大模型，通过 image_generate_lite 工具生图；或在侧边栏「生图工作台」处理生图任务。",
+  "keywords": [
+    "deepseek",
+    "deepseek-harness",
+    "dsh",
+    "dsh-plugin",
+    "plugin",
+    "image-generation",
+    "cordis"
+  ],
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client.js",
+    "./wire": "./wire.js",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.js",
+    "wire.js",
+    "client.js",
+    "cordis.patch.yml",
+    "README.md",
+    "docs/how-it-works.svg",
+    "LICENSE"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-primitives",
+        "@deepseek-ai/dsh-client-locale"
+      ]
+    }
+  },
+  "engines": {
+    "node": ">=22.19",
+    "dsh": ">=0.1.6"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.0",
+    "@deepseek-ai/dsh-attachment": ">=0.1.1-rc.2",
+    "@deepseek-ai/dsh-credentials": ">=0.1.2-alpha.1",
+    "@deepseek-ai/dsh-settings": ">=0.1.2-alpha.5",
+    "@deepseek-ai/dsh-system-prompt": ">=0.1.2-alpha.1",
+    "@deepseek-ai/dsh-tools": ">=0.1.2-alpha.1",
+    "@deepseek-ai/schemastery": "^3.18.1"
+  }
+}

@@ -1,0 +1,18 @@
+# Internal planning and session logs — local only, never published.
+PLAN.md
+.superpowers/
+
+# Extracted DSH bundle sources kept for local API study (third-party code).
+ref/
+
+# Local asar inspection helpers (they read the developer's own installation).
+tools/
+
+# Runtime output: generated images land here by default.
+generate/
+
+# Housekeeping.
+node_modules/
+*.log
+.DS_Store
+Thumbs.db
