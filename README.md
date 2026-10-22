@@ -100,7 +100,7 @@ DSH 生图插件支持**双模式生图**：
 dsh plugin --profile desktop add dsh-image-lite
 ```
 
-包已带 `provenance` 溯源信息，可在 <https://www.npmjs.com/package/dsh-image-lite> 查看版本、文件清单与签名来源。
+版本、文件清单与发布记录见 <https://www.npmjs.com/package/dsh-image-lite>。由仓库内 `.github/workflows/release.yml`（GitHub OIDC）发布的版本会额外附带 `provenance` 溯源证明；`0.1.0` 是本地 `npm publish` 发布的，暂无该证明。
 
 ### 方式二：从本地源码安装（开发 / 改代码时）
 
@@ -250,8 +250,9 @@ Requires DSH `>= 0.2.1-rc.2` (Node.js `^22.19.0 || >= 24.0.0`, supplied by the h
 dsh plugin --profile desktop add dsh-image-lite
 ```
 
-The published tarball carries `provenance` attestations — versions, file list and build
-origin are visible at <https://www.npmjs.com/package/dsh-image-lite>.
+Versions, file list and publish records are visible at <https://www.npmjs.com/package/dsh-image-lite>.
+Releases produced by `.github/workflows/release.yml` (GitHub OIDC) additionally carry
+`provenance` attestations; `0.1.0` was published locally with `npm publish` and has none.
 
 **Option 2 — from a local checkout (for development):**
 
