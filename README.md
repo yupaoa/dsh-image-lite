@@ -91,10 +91,25 @@ DSH 生图插件支持**双模式生图**：
 
 ## 安装
 
+需要 DSH `>= 0.2.1-rc.2`（Node.js `^22.19.0 || >= 24.0.0`，随宿主提供）。
+
+### 方式一：从 npm 安装（推荐）
+
+```powershell
+# 从 npm registry 安装到 desktop profile：
+dsh plugin --profile desktop add dsh-image-lite
+```
+
+包已带 `provenance` 溯源信息，可在 <https://www.npmjs.com/package/dsh-image-lite> 查看版本、文件清单与签名来源。
+
+### 方式二：从本地源码安装（开发 / 改代码时）
+
 ```powershell
 # 从 DSH 桌面端 CLI / 插件页安装本地包（link: 方式）：
 dsh plugin --profile desktop add link:D:\path\to\dsh-image-lite
 ```
+
+两种方式装的是同一个插件，包内 `cordis.patch.yml` 会自动挂载 `image-gen-lite` 入口，**不需要手改 profile 配置**。区别只有一点：`link:` 方式指向源码目录，改完代码刷新窗口即可生效；npm 方式装的是发布快照，升级靠重新执行 `add`。
 
 重启 DSH（或 HMR 生效时自动重组合）后：
 
@@ -226,10 +241,29 @@ and talks only to the domain you configured.**
 
 ### Install
 
+Requires DSH `>= 0.2.1-rc.2` (Node.js `^22.19.0 || >= 24.0.0`, supplied by the host).
+
+**Option 1 — from npm (recommended):**
+
+```powershell
+# Install into the desktop profile straight from the npm registry:
+dsh plugin --profile desktop add dsh-image-lite
+```
+
+The published tarball carries `provenance` attestations — versions, file list and build
+origin are visible at <https://www.npmjs.com/package/dsh-image-lite>.
+
+**Option 2 — from a local checkout (for development):**
+
 ```powershell
 # Install the local package from the DSH desktop CLI or the Plugins page (link:):
 dsh plugin --profile desktop add link:D:\path\to\dsh-image-lite
 ```
+
+Both routes install the same plugin; its bundled `cordis.patch.yml` mounts the
+`image-gen-lite` entry automatically, so **no profile config editing is needed**. The only
+difference: `link:` points at your source tree (edit, refresh the window, done), while the
+npm route installs a released snapshot (upgrade by running `add` again).
 
 After restarting DSH (or once HMR regroups the bundle):
 
