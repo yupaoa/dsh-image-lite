@@ -38,11 +38,28 @@ jobs:
             exit 1
           fi
 
+      # A tag can be re-pushed, re-run, or created for a version that already went
+      # out by hand. npm rejects republishing an existing version, which would turn
+      # a harmless re-run into a red pipeline — so check first and skip when the
+      # version is already on the registry.
+      - name: Is this version already published?
+        id: guard
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          set -euo pipefail
+          version="$(node -p "require('./package.json').version")"
+          if npm view "dsh-image-lite@${version}" version --registry https://registry.npmjs.org >/dev/null 2>&1; then
+            echo "::notice::dsh-image-lite@${version} is already on the registry — skipping publish"
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       # Authentication is OIDC trusted publishing: npm exchanges the GitHub OIDC
       # token for a short-lived publish credential, so there is no NPM_TOKEN secret
       # to provision, rotate, leak, or accidentally leave empty. Configure it once
       # on npmjs.com: package Settings → Trusted publishing → GitHub Actions,
       # repository `yupaoa/dsh-image-lite`, workflow `release.yml`.
       - name: Publish
-        if: startsWith(github.ref, 'refs/tags/')
+        if: startsWith(github.ref, 'refs/tags/') && steps.guard.outputs.exists == 'false'
         run: npm publish --provenance --access public
