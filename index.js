@@ -61,7 +61,7 @@ export const ENTRY_NS = 'image-gen-lite'
 /** Loopback RPC channel for the client half. */
 export const RPC_CHANNEL = '/image-gen-lite'
 
-const USER_AGENT = 'dsh-image-lite/0.1.0'
+const USER_AGENT = 'dsh-image-lite/0.2.0'
 const SUPPORTED_FORMAT = 'openai-images'
 
 /**
