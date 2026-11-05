@@ -13,10 +13,12 @@
  * write takes effect on the next tool call without a restart.
  *
  * P1 scope: the `openai-images` API format only (gpt-image-1 and
- * compatible gateways). The 出图 fetch layer, the RPC channel, the tool,
- * and the system-prompt section are all written from scratch against the
- * DSH services (attachments / credentials / tools / system-prompt); this
- * plugin is self-contained — no other image plugin is required.
+ * compatible gateways). The 出图 fetch layer, the tool, and the
+ * system-prompt section are written against the DSH services (attachments /
+ * credentials / tools / system-prompt); the panel's RPC channel rides on
+ * Connection's generic channel registry rather than a private route, so the
+ * transport stays owned by the platform. This plugin is self-contained — no
+ * other image plugin is required.
  */
 import z from '@deepseek-ai/schemastery'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
@@ -640,72 +642,35 @@ function failure(error) {
 }
 
 /**
- * Minimal RPC transport on a route of our own: `connection.rpc.handle` binds the
- * channel to a service context that cannot read `webServer` here, so it throws
- * "cannot get property webServer without inject" and no route is mounted.
- * The wire format is the same client-request / server-response pair.
+ * Mount the panel's RPC channel on Connection's generic channel registry.
+ *
+ * The registry owns the transport end to end: envelope framing, the
+ * content-type check, the Host/Origin fence, 401/403 admission, request
+ * cancellation and the buffered-body cap. Its handler receives the bridge's
+ * abort signal as the third argument, so a client disconnect now actually
+ * cancels in-flight work instead of being dropped on the floor.
+ *
+ * Enter through `connection.register(owner, …)`, never its `rpc.handle` sugar:
+ * that getter takes the owner from Connection's own context, where
+ * `owner.webServer` throws "cannot get property webServer without inject" and
+ * the route silently never mounts (reproduced against cordis 4.1.0 — plain
+ * `rpc.handle`, `ctx.connection.rpc.handle` and destructured `rpc.handle` all
+ * fail the same way). Passing this inject scope explicitly is what makes
+ * `owner.webServer` resolvable, so `webServer` also has to stay in the inject
+ * list.
+ *
+ * The previous implementation mounted a prefix route of its own and
+ * re-implemented the envelope; that copy drifted from the platform (no
+ * cancellation, no body cap) and has been removed.
  */
-async function serveRpc(req, res, admit, handle) {
-  let rejection
-  try {
-    rejection = admit(req)
-  } catch {
-    rejection = 500
-  }
-  if (rejection !== undefined) {
-    res.writeHead(rejection)
-    res.end(rejection === 401 ? 'unauthorized' : 'forbidden')
-    return
-  }
-  const url = new URL(req.url ?? '/', 'http://x')
-  const endpoint = url.pathname.startsWith(`${RPC_CHANNEL}/`) ? url.pathname.slice(RPC_CHANNEL.length + 1) : ''
-  if (req.method !== 'POST' || endpoint === '') {
-    res.writeHead(req.method === 'POST' ? 404 : 405)
-    res.end()
-    return
-  }
-  if ((req.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase() !== 'application/json') {
-    res.writeHead(415)
-    res.end('content type must be application/json')
-    return
-  }
-  let raw = ''
-  for await (const chunk of req) raw += chunk
-  let message
-  try {
-    message = JSON.parse(raw)
-  } catch {
-    res.writeHead(400)
-    res.end('body is not JSON')
-    return
-  }
-  const rpcId = typeof message?.rpcId === 'string' ? message.rpcId : 'invalid-request'
-  const reply = (result) => {
-    res.writeHead(200, { 'content-type': 'application/json' })
-    res.end(JSON.stringify({ type: 'server-response', rpcId, result }))
-  }
-  if (message?.type !== 'client-request' || message.method !== endpoint) {
-    reply({ ok: false, error: { code: 'gateway/bad-request', message: 'method does not match endpoint', details: {} } })
-    return
-  }
-  try {
-    reply(await handle(endpoint, message.payload))
-  } catch (error) {
-    reply({ ok: false, error: { code: 'gateway/internal', message: error instanceof Error ? error.message : String(error), details: {} } })
-  }
-}
-
 function registerRpc(ctx, readActive, readAspect, readOutputDir) {
   ctx.inject(['connection', 'webServer'], (scoped) => {
     const connection = scoped.get('connection')
-    const webServer = scoped.get('webServer')
-    if (connection === undefined || webServer === undefined) return
-    const admit = (request) => (typeof connection.requestRejection === 'function' ? connection.requestRejection(request) : undefined)
-    scoped.effect(() => webServer.register({
-      kind: 'prefix',
-      path: RPC_CHANNEL,
-      handler: (req, res) => serveRpc(req, res, admit, handleRpc),
-    }), 'dsh-image-lite: rpc route')
+    if (connection === undefined) return
+    if (typeof connection.register !== 'function') {
+      scoped.logger?.warn?.('dsh-image-lite: this host has no connection.register; the 生图工作台 panel has no RPC channel')
+      return
+    }
     async function handleRpc(endpoint, payload, signal) {
       try {
         if (typeof payload !== 'object' || payload === null) throw new BadRequest('payload must be an object')
@@ -804,6 +769,7 @@ function registerRpc(ctx, readActive, readAspect, readOutputDir) {
         return failure(error)
       }
     }
+    connection.register(scoped, RPC_CHANNEL, handleRpc)
   })
 }
 

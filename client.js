@@ -83,6 +83,8 @@ window.__ModuleLoader__.load({
       refs: 'Reference images',
       refsEmpty: 'No references yet. Upload, paste, or click "keep editing" on a result below.',
       refsFull: 'Up to 5 reference images.',
+      refsPartial: 'Only part of the selection was added — up to 5 references fit.',
+      cancelled: 'Generation cancelled.',
       upload: 'Upload',
       clear: 'Clear',
       clearHint: 'Clear references, prompt and results to start a new picture.',
@@ -128,6 +130,7 @@ window.__ModuleLoader__.load({
       keyPlaceholder: 'sk-… paste the API key',
       keyHint: 'Stored in the DSH credentials service — the config keeps only a masked preview.',
       keyStoredHint: 'Already stored: {hint}. Leave empty to keep it.',
+      keySaved: 'Saved: {hint}',
       keyEnvHint: 'Read from the environment (or an existing credential) under this name.',
       keyReplaceHint: 'The old value here is not a credential name — paste the API key to replace it.',
       keyWriteFailed: 'Could not store the API key: {reason}',
@@ -172,6 +175,8 @@ window.__ModuleLoader__.load({
       refs: '参考图',
       refsEmpty: '暂无参考图。可上传、粘贴，或在下方结果里点「用这张继续」。',
       refsFull: '最多 5 张参考图。',
+      refsPartial: '只加入了其中一部分：参考图最多 5 张。',
+      cancelled: '已取消生成。',
       upload: '上传',
       clear: '清空',
       clearHint: '清空参考图、描述和结果，开始新的生成。',
@@ -216,6 +221,7 @@ window.__ModuleLoader__.load({
       keyPlaceholder: 'sk-… 粘贴 API 密钥',
       keyHint: '保存到 DSH 凭据服务，配置里只留加密预览。',
       keyStoredHint: '已保存：{hint}。留空则保持不变。',
+      keySaved: '已保存：{hint}',
       keyEnvHint: '从这个名字的环境变量（或已有凭据）读取。',
       keyReplaceHint: '原来那串不是凭据名，粘贴 API 密钥即可替换。',
       keyWriteFailed: '密钥保存失败：{reason}',
@@ -498,8 +504,11 @@ window.__ModuleLoader__.load({
 
     // ---------------------------------------------------------------- RPC
 
-    async function rpcCall(rpc, endpoint, payload) {
-      const result = await rpc.call(RPC_CHANNEL, endpoint, payload)
+    async function rpcCall(rpc, endpoint, payload, signal) {
+      // `signal` rides along to Connection's `rpc.call(channel, endpoint,
+      // payload, signal)`, which aborts the request and, through the host
+      // bridge, cancels the generation instead of letting it burn tokens.
+      const result = await rpc.call(RPC_CHANNEL, endpoint, payload, signal)
       if (!result.ok) throw new Error(result.error?.message ?? String(result.error))
       return result.value
     }
@@ -648,7 +657,10 @@ window.__ModuleLoader__.load({
           .then((url) => { if (!cancelled) setSrc(url) })
           .catch(() => { if (!cancelled) setFailed(true) })
         return () => { cancelled = true }
-      }, [key, tick])
+        // `load` is rebuilt whenever cwd/sessionId arrive, and the `file`
+        // endpoint resolves relative paths against that cwd: without it here a
+        // tile that loaded before cwd was known never retries.
+      }, [key, tick, load])
 
       if (failed) {
         return React.createElement('button', {
@@ -903,11 +915,20 @@ window.__ModuleLoader__.load({
             ...buildActiveFromOption({ ...option, baseUrl: provider?.baseUrl, apiKeyEnv: provider?.apiKeyEnv }),
           }
           : emptyActiveValue()
-        void liteForm.mutate([{ op: 'set', path: ['active'], value: nextActive }]).catch(() => {})
+        // `mutate` resolves false when the form rejected the write (stale
+        // revision, read-only); swallowing that leaves the picker bouncing back
+        // with no explanation.
+        setProviderError('')
+        void liteForm.mutate([{ op: 'set', path: ['active'], value: nextActive }])
+          .then((result) => { if (result === false) setProviderError(t('saveFailed')) })
+          .catch((error) => setProviderError(`${t('saveFailed')} ${error?.message ?? String(error)}`))
       }
 
       function pickAspect(value) {
-        void liteForm.mutate([{ op: 'set', path: ['activeAspect'], value }]).catch(() => {})
+        setProviderError('')
+        void liteForm.mutate([{ op: 'set', path: ['activeAspect'], value }])
+          .then((result) => { if (result === false) setProviderError(t('saveFailed')) })
+          .catch((error) => setProviderError(`${t('saveFailed')} ${error?.message ?? String(error)}`))
       }
 
       function saveSidebarEnabled(next) {
@@ -1072,7 +1093,12 @@ window.__ModuleLoader__.load({
     async function pickFolderPath(ctx) {
       const bridge = globalThis.__DSH_DIRECTORY_PICKER__
       if (bridge !== undefined && typeof bridge.pick === 'function') return await bridge.pick()
-      const ui = ctx?.uiWorkspace ?? ctx?.get?.('uiWorkspace')
+      // Read the service through ctx.get, never as `ctx.uiWorkspace`: on cordis
+      // 4.x a service that is not in `inject` throws "cannot get property ...
+      // without inject" on access, which would skip this fallback entirely
+      // instead of reaching it (same trap as the host-side webServer mount).
+      let ui
+      try { ui = typeof ctx?.get === 'function' ? ctx.get('uiWorkspace') : undefined } catch { ui = undefined }
       if (ui !== undefined && typeof ui.pickDirectory === 'function') return await ui.pickDirectory()
       throw new Error('image_generate_lite: this runtime exposes no directory picker')
     }
@@ -1343,6 +1369,12 @@ window.__ModuleLoader__.load({
 
     // ---------------------------------------------------------------- studio panel
 
+    /** True when a drag carries real files (not just text or a link). */
+    function carriesFiles(event) {
+      const types = event?.dataTransfer?.types
+      return types !== undefined && types !== null && Array.from(types).includes('Files')
+    }
+
     function StudioBody(props) {
       const t = props.t ?? translateFactory(en)
       const { ctx, rpc, sessionId, liteForm, useSessions } = props
@@ -1351,6 +1383,17 @@ window.__ModuleLoader__.load({
       const [error, setError] = React.useState('')
       const [prompt, setPrompt] = React.useState(store.prompt)
       const [refsFocus, setRefsFocus] = React.useState(false)
+      const [dragging, setDragging] = React.useState(false)
+      // The refs the uploader reads at *execution* time (a render-time count
+      // goes stale between two quick pastes), the queue that keeps uploads
+      // serialized, and the controller of the run in flight for cancellation.
+      const refsRef = React.useRef(store.refs)
+      const uploadChain = React.useRef(Promise.resolve())
+      const abortRef = React.useRef(null)
+      React.useEffect(() => { refsRef.current = store.refs }, [store.refs])
+      // Leaving the panel aborts the run: it used to keep generating (and
+      // billing) after the tab was closed.
+      React.useEffect(() => () => { abortRef.current?.abort() }, [])
 
       const liteSnap = useSnapshot(liteForm)
 
@@ -1379,42 +1422,66 @@ window.__ModuleLoader__.load({
         if (!option) return
         const provider = providers.find((p) => p.id === option.providerId)
         try {
-          await liteForm.mutate([{
+          const applied = await liteForm.mutate([{
             op: 'set',
             path: ['active'],
             value: {
               ...buildActiveFromOption({ ...option, baseUrl: provider?.baseUrl, apiKeyEnv: provider?.apiKeyEnv }),
             },
           }])
-        } catch { /* the form's recovery read re-syncs the snapshot */ }
+          if (applied === false) setError(t('saveFailed'))
+        } catch (error) { setError(`${t('saveFailed')} ${error?.message ?? String(error)}`) }
       }
 
       async function pickAspect(value) {
         try {
-          await liteForm.mutate([{ op: 'set', path: ['activeAspect'], value }])
-        } catch { /* snapshot resyncs */ }
+          const applied = await liteForm.mutate([{ op: 'set', path: ['activeAspect'], value }])
+          if (applied === false) setError(t('saveFailed'))
+        } catch (error) { setError(`${t('saveFailed')} ${error?.message ?? String(error)}`) }
       }
 
-      async function addFiles(fileList) {
+      function addFiles(fileList) {
         const files = Array.from(fileList ?? []).filter((f) => /^image\/(png|jpe?g|webp|gif)$/i.test(f.type))
-        if (files.length === 0) return
-        const room = MAX_REFS - store.refs.length
+        if (files.length === 0) return Promise.resolve()
+        // Serialize every upload. Two quick pastes used to read the same
+        // render-time ref count, both pass the room check and upload twice —
+        // the second batch then losing to a silent `.slice(0, MAX_REFS)`.
+        const next = uploadChain.current.then(() => uploadFiles(files), () => uploadFiles(files))
+        uploadChain.current = next.catch(() => {})
+        return next
+      }
+
+      async function uploadFiles(files) {
+        const base = refsRef.current
+        const room = MAX_REFS - base.length
         if (room <= 0) { setError(t('refsFull')); return }
-        const items = []
-        for (const file of files.slice(0, room)) {
-          const data = await new Promise((resolveData, rejectData) => {
-            const reader = new FileReader()
-            reader.onload = () => resolveData(String(reader.result).split(',', 2)[1] ?? '')
-            reader.onerror = () => rejectData(reader.error)
-            reader.readAsDataURL(file)
-          })
-          items.push({ data, mediaType: file.type === 'image/jpg' ? 'image/jpeg' : file.type, name: file.name })
-        }
+        const accepted = files.slice(0, room)
+        const skipped = files.length - accepted.length
+        // Everything that can fail sits inside one try: the FileReader awaits
+        // used to sit outside it, so an unreadable file rejected the whole call
+        // and every caller (paste, drop, file input) dropped it unhandled.
         try {
+          const items = []
+          for (const file of accepted) {
+            const data = await new Promise((resolveData, rejectData) => {
+              const reader = new FileReader()
+              reader.onload = () => resolveData(String(reader.result).split(',', 2)[1] ?? '')
+              reader.onerror = () => rejectData(new Error(reader.error?.message ?? `cannot read ${file.name}`))
+              reader.readAsDataURL(file)
+            })
+            items.push({ data, mediaType: file.type === 'image/jpg' ? 'image/jpeg' : file.type, name: file.name })
+          }
           const value = await rpcCall(rpc, 'admitImages', { items })
-          const fresh = value.refs.filter((ref) => !store.refs.some((r) => r.attachmentId === ref.attachmentId))
-          if (fresh.length > 0) updateStore((prev) => ({ ...prev, refs: [...prev.refs, ...fresh].slice(0, MAX_REFS) }))
-          setError('')
+          const fresh = value.refs.filter((ref) => !base.some((r) => r.attachmentId === ref.attachmentId))
+          const merged = [...base, ...fresh].slice(0, MAX_REFS)
+          refsRef.current = merged
+          if (fresh.length > 0) updateStore((prev) => ({
+            ...prev,
+            refs: [...prev.refs, ...fresh.filter((ref) => !prev.refs.some((r) => r.attachmentId === ref.attachmentId))].slice(0, MAX_REFS),
+          }))
+          // Never drop the overflow on the floor: say what actually landed.
+          if (skipped > 0 || base.length + fresh.length > MAX_REFS) setError(t('refsPartial'))
+          else setError('')
         } catch (err) {
           setError(`${t('uploadFailed')} ${err?.message ?? ''}`)
         }
@@ -1435,6 +1502,8 @@ window.__ModuleLoader__.load({
       async function generate() {
         const text = prompt.trim()
         if (!text || busy) return
+        const controller = new AbortController()
+        abortRef.current = controller
         setBusy(true)
         setError('')
         try {
@@ -1443,7 +1512,8 @@ window.__ModuleLoader__.load({
             aspect: activeAspect,
             prompt: text,
             ...store.refs.length > 0 ? { refs: store.refs } : {},
-          })
+          }, controller.signal)
+          if (controller.signal.aborted) return
           updateStore((prev) => ({
             ...prev,
             prompt: text,
@@ -1457,10 +1527,16 @@ window.__ModuleLoader__.load({
             }, ...prev.recent].slice(0, 12),
           }))
         } catch (err) {
-          setError(`${t('errorPrefix')}: ${err?.message ?? err}`)
+          if (controller.signal.aborted || err?.name === 'AbortError') setError(t('cancelled'))
+          else setError(`${t('errorPrefix')}: ${err?.message ?? err}`)
         } finally {
+          if (abortRef.current === controller) abortRef.current = null
           setBusy(false)
         }
+      }
+
+      function cancelGenerate() {
+        abortRef.current?.abort()
       }
 
       const canGenerate = hasActive && !!cwd && prompt.trim().length > 0 && !busy
@@ -1472,11 +1548,34 @@ window.__ModuleLoader__.load({
         setError('')
       }
 
-      return React.createElement('div', { style: css.panel, onPaste: (event) => {
+      // A dropped file must never reach the browser's default handler: that
+      // navigates the whole GUI to file:// and takes the live session with it.
+      // Root-level, so every child (refs box, prompt, results) is covered.
+      const dragHandlers = {
+        onDragOver: (event) => {
+          if (!carriesFiles(event)) return
+          event.preventDefault()
+          try { event.dataTransfer.dropEffect = 'copy' } catch {}
+          if (!dragging) setDragging(true)
+        },
+        onDragLeave: (event) => {
+          const next = event.relatedTarget
+          if (typeof next === 'object' && next !== null && event.currentTarget.contains(next)) return
+          setDragging(false)
+        },
+        onDrop: (event) => {
+          setDragging(false)
+          if (!carriesFiles(event)) return
+          event.preventDefault()
+          void addFiles(event.dataTransfer.files)
+        },
+      }
+
+      return React.createElement('div', { style: css.panel, ...dragHandlers, onPaste: (event) => {
         const files = Array.from(event.clipboardData?.items ?? [])
           .map((item) => item.getAsFile())
           .filter((f) => f !== null)
-        if (files.length > 0) { event.preventDefault(); addFiles(files) }
+        if (files.length > 0) { event.preventDefault(); void addFiles(files) }
       } },
         // Clear — top-right, red, disabled while a generation runs or when idle.
         React.createElement('div', { style: css.topbar },
@@ -1528,7 +1627,7 @@ window.__ModuleLoader__.load({
             role: 'group',
             'aria-label': t('refs'),
             'aria-describedby': 'dsh-igl-refs-hint',
-            style: { ...css.drop, ...(refsFocus ? css.dropActive : null) },
+            style: { ...css.drop, ...((refsFocus || dragging) ? css.dropActive : null) },
             onFocus: () => setRefsFocus(true),
             onBlur: () => setRefsFocus(false),
             onClick: () => setRefsFocus(true),
@@ -1536,7 +1635,9 @@ window.__ModuleLoader__.load({
               const files = Array.from(event.clipboardData?.items ?? [])
                 .map((item) => item.getAsFile())
                 .filter((f) => f !== null)
-              if (files.length > 0) { event.preventDefault(); addFiles(files) }
+              // The panel root listens for the same paste; without this the box
+              // uploads every image twice (two attachments, two ref slots).
+              if (files.length > 0) { event.preventDefault(); event.stopPropagation(); void addFiles(files) }
             },
           },
             store.refs.length === 0
@@ -1577,9 +1678,14 @@ window.__ModuleLoader__.load({
           }),
           error ? React.createElement('p', { style: css.error, role: 'alert' }, error) : null,
           !cwd ? React.createElement('p', { style: css.hint }, t('noCwd')) : null,
-          React.createElement('button', {
-            type: 'button', className: 'dsh-igl-primary', disabled: !canGenerate, onClick: generate,
-          }, busy ? t('generating') : t('generate')),
+          React.createElement('div', { style: { ...css.row, gap: 8 } },
+            React.createElement('button', {
+              type: 'button', className: 'dsh-igl-primary', disabled: !canGenerate, onClick: generate,
+            }, busy ? t('generating') : t('generate')),
+            busy ? React.createElement('button', {
+              type: 'button', className: 'dsh-igl-btn', onClick: cancelGenerate,
+            }, t('cancel')) : null,
+          ),
         ),
         // Results
         React.createElement('div', { style: css.section },
@@ -1746,8 +1852,20 @@ window.__ModuleLoader__.load({
             }),
           }, CornerButton)))
         }
-        const sync = () => { release(); mount() }
-        mount()
+        // Re-mount only when the gate actually flips. `lite.subscribe` fires on
+        // every config write — including the panel's own model and aspect
+        // pickers (1382/1394) — and releasing the pane registration on those
+        // unmounts StudioBody, throwing away a half-typed prompt and resetting
+        // `busy`, which lets a second generate fire while the first still runs.
+        let mountedEnabled = sidebarStudioEnabled(lite)
+        const sync = () => {
+          const enabled = sidebarStudioEnabled(lite)
+          if (enabled === mountedEnabled) return
+          mountedEnabled = enabled
+          release()
+          mount()
+        }
+        if (mountedEnabled) mount()
         const stop = typeof lite.subscribe === 'function' ? lite.subscribe(sync) : undefined
         return () => { try { stop?.() } catch {} release() }
       }, 'dsh-image-lite: sidebar studio'))

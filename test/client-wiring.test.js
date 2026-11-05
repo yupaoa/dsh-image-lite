@@ -462,7 +462,11 @@ test('the image folder field can open the native directory picker', () => {
   assert.match(clientSource, /async function pickFolderPath\(ctx\) \{/)
   assert.match(clientSource, /globalThis\.__DSH_DIRECTORY_PICKER__/)
   assert.match(clientSource, /typeof bridge\.pick === 'function'/)
-  assert.match(clientSource, /ctx\?\.uiWorkspace \?\? ctx\?\.get\?\.\('uiWorkspace'\)/)
+  // `uiWorkspace` is not in the plugin's inject list, so reading it as
+  // `ctx.uiWorkspace` throws on cordis 4.x and would skip this fallback rather
+  // than reach it; the service has to come from ctx.get.
+  assert.match(clientSource, /ctx\.get\('uiWorkspace'\)/)
+  assert.doesNotMatch(clientSource, /ctx\?\.uiWorkspace/)
   assert.match(clientSource, /typeof ui\.pickDirectory === 'function'/)
   assert.match(clientSource, /function OutputDirField\(\{ t, value, disabled, onCommit, onError, ctx \}\)/)
   assert.match(clientSource, /const picked = await pickFolderPath\(ctx\)/)
@@ -481,7 +485,13 @@ test('the sidebar studio can be switched off from the settings card', () => {
   assert.match(clientSource, /function sidebarStudioEnabled\(lite\) \{/)
   assert.match(clientSource, /return value\?\.sidebarEnabled !== false/)
   assert.match(clientSource, /if \(!sidebarStudioEnabled\(lite\)\) return/)
-  assert.match(clientSource, /const sync = \(\) => \{ release\(\); mount\(\) \}/)
+  // `lite.subscribe` fires on every config write, including the panel's own
+  // model/aspect pickers. Remounting on those would dispose the pane body and
+  // throw away a half-typed prompt plus the busy flag, so `sync` must compare
+  // the gate and only release/mount when it actually flips.
+  assert.match(clientSource, /let mountedEnabled = sidebarStudioEnabled\(lite\)/)
+  assert.match(clientSource, /const sync = \(\) => \{\s+const enabled = sidebarStudioEnabled\(lite\)\s+if \(enabled === mountedEnabled\) return/)
+  assert.doesNotMatch(clientSource, /const sync = \(\) => \{ release\(\); mount\(\) \}/)
   assert.match(clientSource, /const stop = typeof lite\.subscribe === 'function' \? lite\.subscribe\(sync\) : undefined/)
   assert.match(clientSource, /\{ op: 'set', path: \['sidebarEnabled'\], value: next \}/)
   assert.match(clientSource, /role: 'switch'/)
@@ -512,4 +522,39 @@ test('the image lightbox is a full-window viewer, not a pane-local overlay', () 
 
   // The fallback (no react-dom in the module registry) must still render.
   assert.match(clientSource, /if \(!portalFactory \|\| typeof document === 'undefined'\) return overlay/)
+})
+
+test('a running generation can be cancelled, and leaving the panel cancels it', () => {
+  // Connection's `rpc.call` takes a signal as its fourth argument; forwarding it
+  // is what makes the host abort the in-flight request instead of billing on.
+  assert.match(clientSource, /async function rpcCall\(rpc, endpoint, payload, signal\) \{/)
+  assert.match(clientSource, /rpc\.call\(RPC_CHANNEL, endpoint, payload, signal\)/)
+  assert.match(clientSource, /const controller = new AbortController\(\)/)
+  assert.match(clientSource, /\}, controller\.signal\)/)
+  assert.match(clientSource, /function cancelGenerate\(\) \{/)
+  assert.match(clientSource, /onClick: cancelGenerate/)
+  assert.match(clientSource, /err\?\.name === 'AbortError'/)
+  // Unmount cleanup: closing the tab must abort, not orphan the run.
+  assert.match(clientSource, /React\.useEffect\(\(\) => \(\) => \{ abortRef\.current\?\.abort\(\) \}, \[\]\)/)
+  assert.match(clientSource, /cancelled: '已取消生成。'/)
+})
+
+test('reference uploads serialize and report the overflow instead of dropping it', () => {
+  // Two quick pastes used to read the same render-time count, both pass the
+  // room check and upload twice; the merge then silently sliced extras away.
+  assert.match(clientSource, /const uploadChain = React\.useRef\(Promise\.resolve\(\)\)/)
+  assert.match(clientSource, /uploadChain\.current\.then\(\(\) => uploadFiles\(files\), \(\) => uploadFiles\(files\)\)/)
+  assert.match(clientSource, /const base = refsRef\.current/)
+  assert.match(clientSource, /const room = MAX_REFS - base\.length/)
+  assert.doesNotMatch(clientSource, /MAX_REFS - store\.refs\.length/)
+  assert.match(clientSource, /const skipped = files\.length - accepted\.length/)
+  assert.match(clientSource, /setError\(t\('refsPartial'\)\)/)
+  assert.match(clientSource, /refsPartial: '只加入了其中一部分：参考图最多 5 张。'/)
+})
+
+test('an image tile reloads when its loader is rebuilt', () => {
+  // `load` closes over cwd/sessionId, and the `file` endpoint resolves relative
+  // paths against that cwd: a tile that ran before cwd was known must retry.
+  assert.match(clientSource, /\}, \[key, tick, load\]\)/)
+  assert.doesNotMatch(clientSource, /\}, \[key, tick\]\)/)
 })
