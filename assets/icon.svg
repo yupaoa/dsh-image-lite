@@ -1,0 +1,19 @@
+<svg width="36" height="36" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Subject: one framed picture with a landscape inside — the studio's own
+       output at its simplest. Drafted to references/artwork.md: 36x36 canvas,
+       no tile or background (Plugin Manager draws the tile), ink box 22x17
+       centred on (18,18), flat two-stop gradient borrowed from the installed
+       icons it sits beside (#69B9FF -> #324DE2), no text, no effects. -->
+  <rect x="7" y="9.5" width="22" height="17" rx="3.2" stroke="url(#igl-frame)" stroke-width="2.2"/>
+  <path d="M9.6 23.4l4.5-4.4a2.1 2.1 0 0 1 2.9 0l2.1 2.1" stroke="url(#igl-frame)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="13.4" cy="15.3" r="1.85" fill="url(#igl-frame)"/>
+  <defs>
+    <linearGradient id="igl-frame" x1="18" y1="9.5" x2="18" y2="26.5" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#69B9FF"/>
+      <stop offset="1" stop-color="#324DE2"/>
+    </linearGradient>
+  </defs>
+</svg>
+
+
+

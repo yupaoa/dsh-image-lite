@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Image studio lite",
+    "description": "Generate images from the conversation with the image_generate_lite tool, or work in the 生图工作台 sidebar tab. The model library, default model and default image spec live in this plugin's own settings card."
+  }
+}

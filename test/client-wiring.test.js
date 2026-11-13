@@ -39,6 +39,7 @@ function inertForm(value) {
 
 function runClient(options = {}) {
   const failSeat = options.failSeat
+  const react = options.react ?? makeReactStub()
   const registrations = []
   const effects = []
   const typeRegistrations = []
@@ -58,7 +59,7 @@ function runClient(options = {}) {
   // `window` and a capturing require.
   const factoryRegistry = {}
   const require = (id) => {
-    if (id === 'react') return makeReactStub()
+    if (id === 'react') return react
     if (id.startsWith('@deepseek-ai/')) return {}
     return {}
   }
@@ -155,6 +156,37 @@ test('tab type registers under the right id/kind with keepMounted', () => {
   assert.equal(typeof def.title, 'function')
   assert.ok(Array.isArray(def.guide) && def.guide.length === 1)
   assert.equal(def.guide[0].id, 'dsh-image-lite')
+})
+
+/** A React stub that records the element tree instead of rendering it. */
+function makeRecordingReact() {
+  const createElement = (type, props, ...children) => ({ type, props: props ?? {}, children })
+  return { Fragment: 'Fragment', createElement }
+}
+
+test('the guide entry draws its own illustration (no cube placeholder)', () => {
+  const { typeRegistrations } = runClient({ react: makeRecordingReact() })
+  const entry = typeRegistrations[0].guide[0]
+  assert.equal(typeof entry.icon, 'function', 'without an icon the guide draws its cube placeholder')
+  const tree = entry.icon({ size: 36 })
+  assert.equal(tree.type, 'svg')
+  assert.equal(tree.props.viewBox, '0 0 36 36')
+  assert.equal(tree.props.width, 36)
+  // Frame, landscape, sun — one subject, no badge or sparkle on top.
+  assert.equal(tree.children.length, 3)
+  assert.deepEqual(
+    tree.children.map((child) => child.props.stroke ?? child.props.fill),
+    ['#539CFA', '#539CFA', '#539CFA'],
+  )
+})
+
+test('glyphs are self-contained: no primitives import, no dead manifest edge', () => {
+  // The host's module table need not resolve the primitives package for a
+  // third-party client, and it ships no generic icon set anyway; a require
+  // here is a silent path back to text labels.
+  assert.ok(!clientSource.includes("require('@deepseek-ai/dsh-client-ui-primitives')"))
+  const manifest = JSON.parse(readFileSync(fileURLToPath(new URL('../package.json', import.meta.url)), 'utf8'))
+  assert.ok(!manifest.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-primitives'))
 })
 
 test('the five slot seats register under the right keys', () => {

@@ -28,14 +28,71 @@ window.__ModuleLoader__.load({
     Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' })
 
     const React = require('react')
-    // Icons are a cosmetic concern: if this runtime's module registry does
-    // not resolve the primitives package for third-party clients, the module
-    // must still activate (every icon use site degrades to text labels).
-    let primitives = {}
-    try {
-      primitives = require('@deepseek-ai/dsh-client-ui-primitives') ?? {}
-    } catch {
-      primitives = {}
+    // Glyphs are drawn here instead of imported. `@deepseek-ai/dsh-client-ui-primitives`
+    // exports no generic icon set (only its own `GuideArtwork*` illustrations), and a
+    // third-party client's module table need not resolve it at all — so every glyph
+    // used to fall through to a text label. Local SVGs render on any release, keep the
+    // product's stroke weight, and inherit `currentColor` from the button around them.
+    const glyph = (props, ...children) => React.createElement('svg', {
+      width: props.size ?? 16,
+      height: props.size ?? 16,
+      viewBox: '0 0 16 16',
+      fill: 'none',
+      stroke: 'currentColor',
+      strokeWidth: 1.4,
+      strokeLinecap: 'round',
+      strokeLinejoin: 'round',
+      className: props.className,
+      'aria-hidden': 'true',
+      focusable: 'false',
+    }, ...children)
+    const glyphPath = (d, extra) => React.createElement('path', { d, ...extra })
+
+    function IconClose(props) {
+      return glyph(props, glyphPath('M4.6 4.6l6.8 6.8'), glyphPath('M11.4 4.6l-6.8 6.8'))
+    }
+
+    function IconTrash(props) {
+      return glyph(props,
+        glyphPath('M3 4.4h10'),
+        glyphPath('M6.4 4.4V3.1h3.2v1.3'),
+        glyphPath('M4.7 4.4l.6 8.1a.9.9 0 0 0 .9.8h3.6a.9.9 0 0 0 .9-.8l.6-8.1'),
+        glyphPath('M6.8 6.8v4.2'),
+        glyphPath('M9.2 6.8v4.2'))
+    }
+
+    function IconPlus(props) {
+      return glyph(props, glyphPath('M8 3.6v8.8'), glyphPath('M3.6 8h8.8'))
+    }
+
+    function IconSparkle(props) {
+      return glyph(props, glyphPath('M8 2.6c.55 2.5 1.9 3.85 4.4 4.4-2.5.55-3.85 1.9-4.4 4.4-.55-2.5-1.9-3.85-4.4-4.4 2.5-.55 3.85-1.9 4.4-4.4Z'))
+    }
+
+    // The 开始 guide capsule draws a fixed-palette 36px illustration (the same
+    // contract the shipped `GuideArtwork*` components follow): one framed
+    // picture, the studio's own output at its simplest, so the card stops
+    // showing the guide's cube placeholder. Flat #539CFA keeps it legible on the
+    // guide's dark card; the plugin row's icon in `assets/icon.svg` carries the
+    // same drawing as a gradient, where it sits beside other gradient icons.
+    function StudioArtwork({ size = 36, className } = {}) {
+      return React.createElement('svg', {
+        width: size,
+        height: size,
+        className,
+        viewBox: '0 0 36 36',
+        fill: 'none',
+        xmlns: 'http://www.w3.org/2000/svg',
+        'aria-hidden': 'true',
+        focusable: 'false',
+      },
+        React.createElement('rect', { x: 7, y: 9.5, width: 22, height: 17, rx: 3.2, stroke: '#539CFA', strokeWidth: 2.2 }),
+        React.createElement('path', {
+          d: 'M9.6 23.4l4.5-4.4a2.1 2.1 0 0 1 2.9 0l2.1 2.1',
+          stroke: '#539CFA', strokeWidth: 2.2, strokeLinecap: 'round', strokeLinejoin: 'round',
+        }),
+        React.createElement('circle', { cx: 13.4, cy: 15.3, r: 1.85, fill: '#539CFA' }),
+      )
     }
     // A `position: fixed` overlay is still clipped when an ancestor creates a
     // containing block (`transform` / `filter` / `contain`) — the right sidebar
@@ -48,12 +105,6 @@ window.__ModuleLoader__.load({
     } catch {
       portalFactory = null
     }
-    const pickIcon = (...names) => names.map((n) => primitives[n]).find((v) => typeof v === 'function')
-    const IconClose = pickIcon('IconCloseOutline16', 'IconCloseOutlineRegular', 'IconCloseOutlineMedium')
-    const IconTrash = pickIcon('IconTrashOutline16', 'IconTrashOutlineRegular', 'IconTrashOutlineMedium')
-    const IconPlus = pickIcon('IconPlusOutline16', 'IconPlusOutlineRegular', 'IconPlusOutlineMedium')
-    const IconSparkle = pickIcon('IconSparkle16', 'IconSparkleRegular', 'IconSparkleMedium')
-
     const ENTRY_NS = 'image-gen-lite'
     const LOCALE_NS = 'image-gen-lite'
     const RPC_CHANNEL = '/image-gen-lite'
@@ -722,7 +773,7 @@ window.__ModuleLoader__.load({
             display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
           },
           onClick: onClose,
-        }, IconClose ? React.createElement(IconClose, { size: 16 }) : t('tvClose')),
+        }, React.createElement(IconClose, { size: 16 })),
       )
 
       // No portal runtime (older bundle): still better than a clipped overlay.
@@ -786,7 +837,7 @@ window.__ModuleLoader__.load({
       const text = textParts.join('\n')
       return React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 6, padding: '4px 0' } },
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 6 } },
-          IconSparkle ? React.createElement(IconSparkle, { size: 14 }) : null,
+          React.createElement(IconSparkle, { size: 14 }),
           React.createElement('span', {
             style: { fontSize: 13, lineHeight: '20px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' },
           }, `${TOOL_NAME}: ${derivePrompt(argsRaw)}`)),
@@ -976,7 +1027,7 @@ window.__ModuleLoader__.load({
               ? React.createElement('button', {
                 type: 'button', className: 'dsh-igl-btn',
                 onClick: () => setEditing(draftFromProvider(null, providers)),
-              }, IconPlus ? React.createElement(IconPlus, { size: 12 }) : '+', t('addProvider'))
+              }, React.createElement(IconPlus, { size: 12 }), t('addProvider'))
               : null,
           ),
           editing !== null
@@ -1284,7 +1335,7 @@ window.__ModuleLoader__.load({
         React.createElement('div', { style: { display: 'flex', gap: 6, flex: 'none' } },
           React.createElement('button', { type: 'button', className: 'dsh-igl-btn', onClick: onEdit }, t('editProvider')),
           React.createElement('button', { type: 'button', className: 'dsh-igl-btn', onClick: onDelete, 'aria-label': t('deleteProvider') },
-            IconTrash ? React.createElement(IconTrash, { size: 12 }) : t('deleteProvider')),
+            React.createElement(IconTrash, { size: 12 })),
         ),
       )
     }
@@ -1653,7 +1704,7 @@ window.__ModuleLoader__.load({
                     },
                     'aria-label': t('removeRef'),
                     onClick: () => removeRef(ref),
-                  }, IconTrash ? React.createElement(IconTrash, { size: 12 }) : '×'),
+                  }, React.createElement(IconTrash, { size: 12 })),
                 ))),
           ),
           React.createElement('div', { style: css.row },
@@ -1713,7 +1764,7 @@ window.__ModuleLoader__.load({
     function StudioTitle(props) {
       const t = props.t ?? translateFactory(en)
       return React.createElement(React.Fragment, null,
-        IconSparkle ? React.createElement(IconSparkle, { size: 16 }) : null,
+        React.createElement(IconSparkle, { size: 16 }),
         React.createElement('span', { style: { fontSize: 13, lineHeight: '20px' } }, t('title')),
       )
     }
@@ -1726,7 +1777,7 @@ window.__ModuleLoader__.load({
         title: t('cornerTooltip'),
         'aria-label': t('cornerTooltip'),
         onClick: props.openStudio,
-      }, IconSparkle ? React.createElement(IconSparkle, { size: 16 }) : t('title'))
+      }, React.createElement(IconSparkle, { size: 16 }))
     }
 
     // ---------------------------------------------------------------- configForms
@@ -1815,6 +1866,7 @@ window.__ModuleLoader__.load({
               order: 30,
               title: () => t('guideTitle'),
               description: () => t('guideDescription'),
+              icon: StudioArtwork,
             }],
             keepMounted: true,
           }))

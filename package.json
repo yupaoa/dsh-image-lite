@@ -1,6 +1,6 @@
 {
   "name": "dsh-image-lite",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "DSH 生图插件支持双模式生图：直接对话大模型，通过 image_generate_lite 工具生图；或在侧边栏「生图工作台」处理生图任务。",
   "keywords": [
     "deepseek",
@@ -13,6 +13,7 @@
   ],
   "type": "module",
   "main": "index.js",
+  "icon": "./assets/icon.svg",
   "scripts": {
     "test": "node --test test/*.test.js"
   },
@@ -20,6 +21,8 @@
     ".": "./index.js",
     "./client": "./client.js",
     "./wire": "./wire.js",
+    "./icon": "./assets/icon.svg",
+    "./locale/*.json": "./locale/*.json",
     "./package.json": "./package.json"
   },
   "files": [
@@ -30,6 +33,8 @@
     "README.md",
     "docs/how-it-works.svg",
     "docs/how-it-works.en.svg",
+    "assets/icon.svg",
+    "locale/*.json",
     "LICENSE"
   ],
   "repository": {
@@ -53,7 +58,6 @@
       "platform": "web",
       "inject": [
         "@deepseek-ai/dsh-client-ui-renderer",
-        "@deepseek-ai/dsh-client-ui-primitives",
         "@deepseek-ai/dsh-client-locale"
       ]
     }
