@@ -12,8 +12,8 @@ DSH 生图插件支持**双模式生图**：
 两种模式共用同一份模型库与快速配置（插件入口 `image-gen-lite`，volatile 热生效），
 自包含、无外部依赖，密钥经 DSH 核心凭据服务解析。
 
-> **环境要求**：DSH `>= 0.2.1-rc.2`，Node.js `^22.19.0 || >= 24.0.0`（随宿主）。
-> 低于该版本的 DSH 不保证可用：本插件依赖的 `configForms`、右栏标签注册等接口在 0.2.1 系列才稳定。
+> **环境要求**：DSH `>= 0.2.2-rc.5`，Node.js `^22.19.0 || >= 24.0.0`（随宿主）。
+> 低于该版本的 DSH 不保证可用：本插件依赖的 `configForms`、右栏标签注册等接口在 0.2.1 系列才稳定；当前已验证版本为 DSH `0.2.2-rc.5`（含 0.2.2-rc.3 → rc.5 的升级兼容性核对）。
 
 ## 两种生图模式
 
@@ -91,7 +91,7 @@ DSH 生图插件支持**双模式生图**：
 
 ## 安装
 
-需要 DSH `>= 0.2.1-rc.2`（Node.js `^22.19.0 || >= 24.0.0`，随宿主提供）。
+需要 DSH `>= 0.2.2-rc.5`（Node.js `^22.19.0 || >= 24.0.0`，随宿主提供）。
 
 ### 方式一：从 npm 安装（推荐）
 
@@ -148,9 +148,10 @@ Both modes share one model library and one set of defaults (plugin entry
 `image-gen-lite`, volatile / hot-reloaded). The plugin is self-contained with no
 runtime dependencies, and API keys are resolved through DSH's credential service.
 
-> **Requirements**: DSH `>= 0.2.1-rc.2`, Node.js `^22.19.0 || >= 24.0.0` (provided by the host).
+> **Requirements**: DSH `>= 0.2.2-rc.5`, Node.js `^22.19.0 || >= 24.0.0` (provided by the host).
 > Older DSH builds are not supported: the `configForms` and right-sidebar tab APIs this plugin
-> relies on only settled in the 0.2.1 series.
+> relies on only settled in the 0.2.1 series; the verified version is DSH `0.2.2-rc.5`
+> (including a compatibility check of the 0.2.2-rc.3 → rc.5 upgrade).
 
 ### The two modes
 
@@ -241,7 +242,7 @@ and talks only to the domain you configured.**
 
 ### Install
 
-Requires DSH `>= 0.2.1-rc.2` (Node.js `^22.19.0 || >= 24.0.0`, supplied by the host).
+Requires DSH `>= 0.2.2-rc.5` (Node.js `^22.19.0 || >= 24.0.0`, supplied by the host).
 
 **Option 1 — from npm (recommended):**
 
